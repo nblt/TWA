@@ -86,18 +86,6 @@ if args.wandb:
     date = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) 
     wandb.run.name = args.EXP + date
 
-def schedule(epoch):
-    # t = (epoch) / (args.swa_start if args.swa else args.epochs)
-    # lr_ratio = args.swa_lr / args.lr_init if args.swa else 0.01
-    t = (epoch) / (args.epochs)
-    lr_ratio = 0.01
-    if t <= 0.5:
-        factor = 1.0
-    elif t <= 0.9:
-        factor = 1.0 - (1.0 - lr_ratio) * (t - 0.5) / 0.4
-    else:
-        factor = lr_ratio
-    return args.lr * factor
 
 def get_model_param_vec(model):
     # Return the model parameters as a vector
@@ -158,8 +146,8 @@ def main():
     sys.stdout = Logger(os.path.join(args.log_dir, args.log_name))
 
     # Define model
-    model = torch.nn.DataParallel(get_model(args))
-    # model = get_model(args)
+    # model = torch.nn.DataParallel(get_model(args))
+    model = get_model(args)
     model.cuda()
 
     # Optionally resume from a checkpoint
@@ -167,18 +155,18 @@ def main():
         # if os.path.isfile(args.resume):
         if os.path.isfile(os.path.join(args.save_dir, args.resume)):
             
-            model.load_state_dict(torch.load(os.path.join(args.save_dir, args.resume)))
+            # model.load_state_dict(torch.load(os.path.join(args.save_dir, args.resume)))
 
-            # print("=> loading checkpoint '{}'".format(args.resume))
-            # checkpoint = torch.load(args.resume)
-            # args.start_epoch = checkpoint['epoch']
-            # print ('from ', args.start_epoch)
-            # best_prec1 = checkpoint['best_prec1']
-            # model.load_state_dict(checkpoint['state_dict'])
-            # print("=> loaded checkpoint '{}' (epoch {})"
-            #       .format(args.evaluate, checkpoint['epoch']))
+            print ("=> loading checkpoint '{}'".format(args.resume))
+            checkpoint = torch.load(args.resume)
+            args.start_epoch = checkpoint['epoch']
+            print ('from ', args.start_epoch)
+            best_prec1 = checkpoint['best_prec1']
+            model.load_state_dict(checkpoint['state_dict'])
+            print ("=> loaded checkpoint '{}' (epoch {})"
+                  .format(args.evaluate, checkpoint['epoch']))
         else:
-            print("=> no checkpoint found at '{}'".format(args.resume))
+            print ("=> no checkpoint found at '{}'".format(args.resume))
 
     cudnn.benchmark = True
 
@@ -200,7 +188,8 @@ def main():
                                     momentum=args.momentum,
                                     weight_decay=args.weight_decay)
     elif args.optimizer == 'adam':
-        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, 
+                                    weight_decay=args.weight_decay)
 
     if args.schedule == 'step':
         lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[100, 150], last_epoch=args.start_epoch - 1)
@@ -227,9 +216,6 @@ def main():
         train(train_loader, model, criterion, optimizer, epoch)
 
         lr_scheduler.step()
-        
-        # lr = schedule(epoch)
-        # adjust_learning_rate(optimizer, lr)
 
         # evaluate on validation set
         prec1 = validate(val_loader, model, criterion)
@@ -300,13 +286,6 @@ def train(train_loader, model, criterion, optimizer, epoch):
         output = output.float()
         loss = loss.float()
 
-        # p = get_model_param_vec(model)
-        # if running_weight is None:
-        #     running_weight = p
-        # else:
-        #     coeff = 0.99
-        #     running_weight = running_weight * coeff + p * (1 - coeff)
-
         # measure accuracy and record loss
         prec1 = accuracy(output.data, target)[0]
         losses.update(loss.item(), input.size(0))
@@ -325,15 +304,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
                       epoch, i, len(train_loader), batch_time=batch_time,
                       data_time=data_time, loss=losses, top1=top1))
 
-        if i % 100 == 0 and i > 0:
-            # sample_idx += 1
-            torch.save(model.state_dict(), os.path.join(args.save_dir,  str(epoch) + '_' + str(i // 100) +  '.pt'))
-
-
     print ('Total time for epoch [{0}] : {1:.3f}'.format(epoch, batch_time.sum))
-
-    # torch.save(running_weight, os.path.join(args.save_dir,  str(epoch + 1) +  '.rwa'))
-
 
     train_loss.append(total_loss / len(train_loader.dataset))
     train_err.append(total_err / len(train_loader.dataset)) 

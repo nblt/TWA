@@ -53,9 +53,7 @@ parser.add_argument('--half', dest='half', action='store_true',
                     help='use half-precision(16-bit) ')
 parser.add_argument('--randomseed', 
                     help='Randomseed for training and initialization',
-                    type=int, default=1)
-parser.add_argument('--central', dest='central', action='store_true',
-                    help='use central points in the training epoch ')                    
+                    type=int, default=1)           
 parser.add_argument('--save-dir', dest='save_dir',
                     help='The directory used to save the trained models',
                     default='save_temp', type=str)
@@ -78,14 +76,12 @@ parser.add_argument('--train_start', default=0, type=int, metavar='N',
 # PCA
 parser.add_argument('--n_components', default=40, type=int, metavar='N',
                     help='n_components for PCA')    
-parser.add_argument('--opt', metavar='OPT', help='optimization method for P-SGD', 
-                    default='SGD', choices=['SGD', 'BFGS', 'AMP'])
+parser.add_argument('--opt', metavar='OPT', help='optimization method for TWA', 
+                    default='SGD', choices=['SGD'])
 parser.add_argument('--schedule', metavar='SCHE', help='learning rate schedule for P-SGD', 
                     default='step', choices=['step', 'constant', 'linear'])
 parser.add_argument('--lr', default=1, type=float, metavar='N',
                     help='lr for PSGD')
-parser.add_argument('--noise', default=0, type=float,
-                    help='noise magnitude for data')
 
 args = parser.parse_args()
 set_seed(args.randomseed)
@@ -152,22 +148,20 @@ def main():
         os.makedirs(args.log_dir)
 
     sys.stdout = Logger(os.path.join(args.log_dir, args.log_name))
-    print ('psgd-v7')
+    print ('twa-psgd')
     print ('save dir:', args.save_dir)
     print ('log dir:', args.log_dir)
     
     # Define model
-    # model = torch.nn.DataParallel(get_model(args))
-    model = get_model(args)
+    if args.datasets == 'ImageNet':
+        model = torch.nn.DataParallel(get_model(args))
+    else:
+        model = get_model(args)
     model.cuda()
     cudnn.benchmark = True
 
     # Define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda()    
-
-    if args.opt == 'BFGS':
-        args.momentum = 0
-        args.lr = 1
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr, \
                             momentum=args.momentum, \
@@ -192,18 +186,11 @@ def main():
     ########################## extract subspaces ##########################
     # Load sampled model parameters
     print ('weight decay:', args.weight_decay)
-    print ('noise level:', args.noise)
-    print ('epoch central:', args.central)
     print ('params: from', args.params_start, 'to', args.params_end)
     W = []
     for i in range(args.params_start, args.params_end):
-        # if i % 4 != 0: continue
-
-        if i == 0 or not args.central:
-            model.load_state_dict(torch.load(os.path.join(args.save_dir,  str(i) +  '.pt')))
-            W.append(get_model_param_vec(model))
-        else:
-            W.append(torch.load(os.path.join(args.save_dir,  str(i) +  '.rwa')).cpu().numpy())
+        model.load_state_dict(torch.load(os.path.join(args.save_dir,  str(i) +  '.pt')))
+        W.append(get_model_param_vec(model))
     W = np.array(W)
     print ('W:', W.shape)
 
@@ -212,7 +199,6 @@ def main():
 
     update_param(model, center)
     bn_update(train_loader, model)
-    print (utils.eval_model(train_loader, model, criterion))
     print (utils.eval_model(val_loader, model, criterion))
 
     if args.extract == 'PCA':
@@ -243,9 +229,6 @@ def main():
 
         print (P.shape)
 
-    # test_accuracy_of_line(model, center, P[0, :], train_loader, val_loader, criterion)
-    # print ('plot done!')
-
     # set the start point
     if args.train_start >= 0:
         model.load_state_dict(torch.load(os.path.join(args.save_dir,  str(args.train_start) +  '.pt')))
@@ -268,12 +251,11 @@ def main():
 
         print('current lr {:.5e}'.format(optimizer.param_groups[0]['lr']))
         train(train_loader, model, criterion, optimizer, args, epoch, center)
-        # Bk = torch.eye(args.n_components).cuda()
-        if args.opt == 'SGD':
+
+        if args.schedule != 'linear':
             lr_scheduler.step()
 
         # Evaluate on validation set
-        bn_update(train_loader, model)
         prec1 = validate(val_loader, model, criterion)
 
         # Remember best prec@1 and save checkpoint
@@ -282,18 +264,9 @@ def main():
 
     print ('Save final model')
     torch.save(model.state_dict(), os.path.join(args.save_dir, 'PSGD.pt'))
+
     bn_update(train_loader, model)
-    print (utils.eval_model(train_loader, model, criterion))
     print (utils.eval_model(val_loader, model, criterion))
-
-    p = get_model_param_vec_torch(model)
-    weight = torch.mm(coeff.T, torch.mm(P, p.reshape(-1, 1))).reshape(-1)
-    print ('norm:', weight.norm())
-    print ('weight:', weight)
-
-    # delta_p = get_model_param_vec_torch(model) - center
-    # if args.extract == 'Schmidt':
-    #     print (torch.mm(coeff.T, torch.mm(P, delta_p.reshape(-1, 1))).reshape(-1))
 
     print ('total time:', time.time() - end)
     print ('train loss: ', train_loss)
@@ -302,29 +275,11 @@ def main():
     print ('test acc: ', test_acc)      
     print ('best_prec1:', best_prec1)
 
-iter_count = 0
-
-def test_accuracy_of_line(model, center, v, train_loader, val_loader, criterion):
-    support, train_acc, test_acc = [], [], []
-    for t in np.linspace(-2, 2, 30):
-        update_param(model, center + v * t)
-        support.append(t)
-        
-        bn_update(train_loader, model)
-        train_acc.append(utils.eval_model(train_loader, model, criterion)['accuracy'])
-        test_acc.append(utils.eval_model(val_loader, model, criterion)['accuracy'])
-    
-    print (train_acc)
-    print (test_acc)
-    # plt.plot(support, train_acc, label='train')
-    plt.plot(support, test_acc, label='test')
-    plt.legend()
-    plt.savefig('acc.jpg')
 
 def train(train_loader, model, criterion, optimizer, args, epoch, center):
     # Run one train epoch
 
-    global P, W, iters, T, train_loss, train_acc, search_times, coeff, iter_count
+    global P, W, iters, T, train_loss, train_acc, search_times, coeff
     
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -336,8 +291,6 @@ def train(train_loader, model, criterion, optimizer, args, epoch, center):
 
     end = time.time()
     for i, (input, target) in enumerate(train_loader):
-        # if i > 100: break
-        iter_count += 1
 
         # Measure data loading time
         data_time.update(time.time() - end)
@@ -395,13 +348,6 @@ def P_SGD(model, optimizer, grad, center):
     update_grad(model, grad_proj.reshape(-1))
 
     optimizer.step()
-
-    # correct the parameters
-    # param = get_model_param_vec_torch(model) - center
-    # p = torch.mm(P, param.reshape(-1,1))
-    # param_proj = torch.mm(P.transpose(0, 1), p)
-    # update_param(model, param_proj.reshape(-1) + center)
-
 
 def validate(val_loader, model, criterion):
     # Run evaluation

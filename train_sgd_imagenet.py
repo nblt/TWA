@@ -298,13 +298,6 @@ def main_worker(gpu, ngpus_per_node, args):
                 'optimizer' : optimizer.state_dict(),
             }, is_best)
 
-        # if epoch % 10 == 9:
-        #     param_data = np.array(param_vec)
-        #     print (param_data.shape)
-        #     with open('param_data_'+str(epoch+1)+'.txt', 'wb') as file:
-        #         pickle.dump(param_data, file,protocol = 4)
-        #     print ('Done!')
-
     print ('train loss: ', train_loss)
     print ('train acc: ', train_acc)
     print ('test loss: ', test_loss)
@@ -362,7 +355,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args, ngpus_per_node
             if i % args.print_freq == 0:
                 progress.display(i)
 
-            if i > 0 and i % 500 == 0 and i < 5000:
+            if i > 0 and i % 1000 == 0 and i < 5000:
                 sample_idx += 1
                 torch.save(model.state_dict(), 'save_' + args.arch + '/'+str(sample_idx)+'.pt')
 
