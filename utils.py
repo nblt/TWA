@@ -70,57 +70,6 @@ def get_datasets_val(args):
 
     return train_loader, val_loader
 
-
-# def get_datasets_psgd(args):
-#     if args.datasets == 'CIFAR10':
-#         print ('cifar10 dataset!')
-#         normalize = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
-
-#         train_loader = torch.utils.data.DataLoader(
-#             datasets.CIFAR10(root='./datasets/', train=True, transform=transforms.Compose([
-#                 transforms.RandomHorizontalFlip(),
-#                 transforms.RandomCrop(32, 4),
-#                 transforms.GaussianBlur(5, sigma=(0.1,.2)),
-#                 transforms.ToTensor(),
-#                 normalize,
-#             ]), download=True),
-#             batch_size=args.batch_size, shuffle=True,
-#             num_workers=args.workers, pin_memory=True)
-
-#         val_loader = torch.utils.data.DataLoader(
-#             datasets.CIFAR10(root='./datasets/', train=False, transform=transforms.Compose([
-#                 transforms.ToTensor(),
-#                 normalize,
-#             ])),
-#             batch_size=128, shuffle=False,
-#             num_workers=args.workers, pin_memory=True)
-
-#     if args.datasets == 'CIFAR100':
-#         print ('cifar10 dataset!')
-#         normalize = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
-
-#         train_loader = torch.utils.data.DataLoader(
-#             datasets.CIFAR100(root='./datasets/', train=True, transform=transforms.Compose([
-#                 transforms.RandomHorizontalFlip(),
-#                 transforms.RandomCrop(32, 4),
-#                 # # transforms.GaussianBlur(5, sigma=(0.1,.2)),
-#                 # transforms.GaussianBlur(5, sigma=(0.3,.6)),
-#                 transforms.ToTensor(),
-#                 normalize,
-#             ]), download=True),
-#             batch_size=args.batch_size, shuffle=True,
-#             num_workers=args.workers, pin_memory=True)
-
-#         val_loader = torch.utils.data.DataLoader(
-#             datasets.CIFAR100(root='./datasets/', train=False, transform=transforms.Compose([
-#                 transforms.ToTensor(),
-#                 normalize,
-#             ])),
-#             batch_size=128, shuffle=False,
-#             num_workers=args.workers, pin_memory=True)
-        
-#     return train_loader, val_loader
-
 def get_datasets(args):
     if args.datasets == 'CIFAR10':
         print ('cifar10 dataset!')
