@@ -175,7 +175,6 @@ def eval_model(loader, model, criterion):
 def bn_update(loader, model):
     model.train()
     for i, (input, target) in enumerate(loader):
-        if i > 1000: break
         target = target.cuda()
         input_var = input.cuda()
         target_var = target
