@@ -4,11 +4,11 @@
 datasets=CIFAR100
 device=0
 model=VGG16BN # PreResNet164
-DST=results/$model\_$datasets\_seed$seed
+DST=results/$model\_$datasets
 
 CUDA_VISIBLE_DEVICES=$device python -u train_sgd_cifar.py --datasets $datasets \
-        --arch=$model --epochs=200 --wd=$wd --randomseed $seed --lr 0.1 \
-        --save-dir=$DST/checkpoints --log-dir=$DST 
+        --arch=$model --epochs=200 --lr 0.1 \
+        --save-dir=$DST/checkpoints --log-dir=$DST -p 100
 
 lr=2
 end=101
@@ -41,6 +41,19 @@ CUDA_VISIBLE_DEVICES=$device python -u train_twa.py --epochs 2 --datasets $datas
         --batch-size 256  --arch=$model  \
         --save-dir=$DST  --log-dir=$DST 
 
+# TWA (DDP version) 60+2
+datasets=ImageNet
+device=0,1,2,3
+
+model=resnet18
+wd_psgd=0.00001
+lr=0.3
+DST=save_resnet18
+CUDA_VISIBLE_DEVICES=$device python -m torch.distributed.launch --nproc_per_node 4 train_twa_ddp.py \
+        --epochs 2 --datasets $datasets --opt SGD --schedule step --worker 8 \
+        --lr $lr --params_start 0 --params_end 301 --train_start -1 --wd $wd_psgd \
+        --batch-size 256 --arch $model --save-dir $DST --log-dir $DST
+
 # TWA 90+1
 wd_psgd=0.00001
 lr=0.03
@@ -50,3 +63,4 @@ CUDA_VISIBLE_DEVICES=$device python -u train_twa.py --epochs 1 --datasets $datas
         --lr $lr --params_start 301 --params_end 451 --train_start -1 --wd $wd_psgd \
         --batch-size 256  --arch=$model  \
         --save-dir=$DST  --log-dir=$DST 
+        
