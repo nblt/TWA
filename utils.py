@@ -146,6 +146,33 @@ def get_datasets(args):
     
     return train_loader, val_loader
 
+
+def get_imagenet_dataset():
+    traindir = os.path.join('/home/datasets/ILSVRC2012/', 'train')
+    valdir = os.path.join('/home/datasets/ILSVRC2012/', 'val')
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                    std=[0.229, 0.224, 0.225])
+
+    train_dataset = datasets.ImageFolder(
+        traindir,
+        transforms.Compose([
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize,
+        ]))
+
+    val_dataset = datasets.ImageFolder(
+        valdir, 
+        transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            normalize,
+        ]))
+    return train_dataset, val_dataset 
+
+
 ################################ training & evaluation #######################################
 
 def eval_model(loader, model, criterion):
