@@ -167,7 +167,7 @@ def eval_model(loader, model, criterion):
 
         loss_sum += loss.item() * input.size(0)
         pred = output.data.max(1, keepdim=True)[1]
-        correct += pred.eq(target.data.view_as(pred)).sum().item()
+        correct += pred.eq(target_var.data.view_as(pred)).sum().item()
 
     return {
         'loss': loss_sum / len(loader.dataset),

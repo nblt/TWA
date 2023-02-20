@@ -82,7 +82,7 @@ args = parser.parse_args()
 
 if args.wandb:
     import wandb
-    wandb.init(project="param-comibnation", entity="nblt")
+    wandb.init(project="TWA", entity="XXX")
     date = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) 
     wandb.run.name = args.EXP + date
 
@@ -108,9 +108,7 @@ def update_grad(model, grad_vec):
     idx = 0
     for name,param in model.named_parameters():
         arr_shape = param.grad.shape
-        size = 1
-        for i in range(len(list(arr_shape))):
-            size *= arr_shape[i]
+        size = arr_shape.numel()
         param.grad.data = grad_vec[idx:idx+size].reshape(arr_shape)
         idx += size
 
@@ -118,9 +116,7 @@ def update_param(model, param_vec):
     idx = 0
     for name,param in model.named_parameters():
         arr_shape = param.data.shape
-        size = 1
-        for i in range(len(list(arr_shape))):
-            size *= arr_shape[i]
+        size = arr_shape.numel()
         param.data = param_vec[idx:idx+size].reshape(arr_shape)
         idx += size
 
@@ -193,8 +189,6 @@ def main():
 
     if args.schedule == 'step':
         lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[100, 150], last_epoch=args.start_epoch - 1)
-    elif args.schedule == 'cosine':
-        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=args.epochs)
 
     if args.evaluate:
         validate(val_loader, model, criterion)

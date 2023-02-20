@@ -20,7 +20,7 @@ import utils
 from utils import get_datasets, get_model, set_seed, adjust_learning_rate, bn_update, eval_model, Logger
 
 ########################## parse arguments ##########################
-parser = argparse.ArgumentParser(description='TWA')
+parser = argparse.ArgumentParser(description='SGD in Projected Subspace')
 parser.add_argument('--EXP', metavar='EXP', help='experiment name', default='P-SGD')
 parser.add_argument('--arch', '-a', metavar='ARCH', default='VGG16BN',
                     help='model architecture (default: VGG16BN)')
@@ -68,7 +68,7 @@ parser.add_argument('--extract', metavar='EXTRACT', help='method for extracting 
                     default='Schmidt', choices=['Schmidt'])
 parser.add_argument('--params_start', default=0, type=int, metavar='N',
                     help='which idx start for TWA') 
-parser.add_argument('--params_end', default=101, type=int, metavar='N',
+parser.add_argument('--params_end', default=51, type=int, metavar='N',
                     help='which idx end for TWA') 
 parser.add_argument('--train_start', default=0, type=int, metavar='N',
                     help='which idx start for training')     
@@ -195,7 +195,7 @@ def main():
 
     update_param(model, center)
     bn_update(train_loader, model)
-    print (utils.eval_model(val_loader, model, criterion))
+    print ('SWA:', utils.eval_model(val_loader, model, criterion))
 
     if args.extract == 'Schmidt':
         P = torch.from_numpy(np.array(W)).cuda()
