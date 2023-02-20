@@ -1,8 +1,6 @@
 ### TWA in tail stage training
-We show that TWA could improve the performance of SWA in the original SWA setting, where the improvements are more significant when the tail learning rate is larger.
-```
-cd swa
-```
+We show that TWA could improve the performance of SWA in the original SWA setting, where the improvements are more significant when the tail learning rate `swa_lr` is larger.
+
 First, run SWA using original [code](https://github.com/timgaripov/swa):
 ```
 bash run.sh
