@@ -40,7 +40,7 @@ The training configuration is easy to set as you need in the scripts.
 In this part, we conduct TWA in the head training stage, where we achieve considerably **30%-40%** epochs saving on CIFAR-10/100 and ImageNet, with a comparable or even better performance against regular training.
 We show sample usages in `run.sh`.
 
-For the first step, we conduct regular training for generating the historical solutions (for ImageNet training, the dataset `path` need to be set). For example,
+For the first step, we conduct regular training for generating the historical solutions (for ImageNet training, the dataset need to be prepared at folder `path`). For example,
 
 ```
 datasets=CIFAR100
