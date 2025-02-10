@@ -1,202 +1,139 @@
 import torch
-import torch.nn as nn
-import torch.nn.parallel
-import torch.backends.cudnn as cudnn
-import torch.optim as optim
-import torch.utils.data
-import torch.nn.functional as F
-import torchvision.transforms as transforms
-import torchvision.datasets as datasets
-import torchvision.models as models_imagenet
-
-import numpy as np
-import random
-import os
+import math
 import time
-import models
-import sys
+import numpy as np
 
-def set_seed(seed=1): 
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+class ModelWrapper(torch.nn.Module):
+    def __init__(self, model, feature_dim, num_classes, normalize=False, initial_weights=None):
+        super(ModelWrapper, self).__init__()
+        self.model = model
+        self.classification_head = torch.nn.Linear(feature_dim, num_classes)
+        self.normalize = normalize
+        if initial_weights is None:
+            initial_weights = torch.zeros_like(self.classification_head.weight)
+            torch.nn.init.kaiming_uniform_(initial_weights, a=math.sqrt(5))
+        self.classification_head.weight = torch.nn.Parameter(initial_weights.clone())
+        self.classification_head.bias = torch.nn.Parameter(
+            torch.zeros_like(self.classification_head.bias))
 
-class Logger(object):
-    def __init__(self,fileN ="Default.log"):
-        self.terminal = sys.stdout
-        self.log = open(fileN,"a")
- 
-    def write(self,message):
-        self.terminal.write(message)
-        self.log.write(message)
- 
-    def flush(self):
-        pass
+        # Note: modified. Get rid of the language part.
+        if hasattr(self.model, 'transformer'):
+            delattr(self.model, 'transformer')
 
-def adjust_learning_rate(optimizer, lr):
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-    return lr
+    def forward(self, images, return_features=False):
+        features = self.model.encode_image(images)
+        if self.normalize:
+            features = features / features.norm(dim=-1, keepdim=True)
+        logits = self.classification_head(features)
+        if return_features:
+            return logits, features
+        return logits
 
-################################ datasets #######################################
+def get_model_from_sd_cpu(state_dict, base_model):
+    feature_dim = state_dict['classification_head.weight'].shape[1]
+    num_classes = state_dict['classification_head.weight'].shape[0]
+    model = ModelWrapper(base_model, feature_dim, num_classes, normalize=True)
+    for p in model.parameters():
+        p.data = p.data.float()
+    model.load_state_dict(state_dict)
+    return model
 
-import torchvision.transforms as transforms
-import torchvision.datasets as datasets
-from torch.utils.data import DataLoader
-from torchvision.datasets import CIFAR10, CIFAR100, ImageFolder
+def get_model_from_sd(state_dict, base_model):
+    feature_dim = state_dict['classification_head.weight'].shape[1]
+    num_classes = state_dict['classification_head.weight'].shape[0]
+    model = ModelWrapper(base_model, feature_dim, num_classes, normalize=True)
+    for p in model.parameters():
+        p.data = p.data.float()
+    model.load_state_dict(state_dict)
+    model = model.cuda()
+    # devices = [x for x in range(torch.cuda.device_count())]
+    # return torch.nn.DataParallel(model,  device_ids=devices)
+    return model
 
-def get_datasets(args):
-    if args.datasets == 'CIFAR10':
-        print ('cifar10 dataset!')
-        normalize = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
+def maybe_dictionarize_batch(batch):
+    if isinstance(batch, dict):
+        return batch
+    if len(batch) == 2:
+        return {'images': batch[0], 'labels': batch[1]}
+    elif len(batch) == 3:
+        return {'images': batch[0], 'labels': batch[1], 'metadata': batch[2]}
+    else:
+        raise ValueError(f'Unexpected number of elements: {len(batch)}')
 
-        train_loader = torch.utils.data.DataLoader(
-            datasets.CIFAR10(root='./datasets/', train=True, transform=transforms.Compose([
-                transforms.RandomHorizontalFlip(),
-                transforms.RandomCrop(32, 4),
-                transforms.ToTensor(),
-                normalize,
-            ]), download=True),
-            batch_size=args.batch_size, shuffle=True,
-            num_workers=args.workers, pin_memory=True)
 
-        val_loader = torch.utils.data.DataLoader(
-            datasets.CIFAR10(root='./datasets/', train=False, transform=transforms.Compose([
-                transforms.ToTensor(),
-                normalize,
-            ])),
-            batch_size=128, shuffle=False,
-            num_workers=args.workers, pin_memory=True)
-
-    elif args.datasets == 'CIFAR100':
-        print ('cifar100 dataset!')
-        normalize = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
-
-        train_loader = torch.utils.data.DataLoader(
-            datasets.CIFAR100(root='./datasets/', train=True, transform=transforms.Compose([
-                transforms.RandomHorizontalFlip(),
-                transforms.RandomCrop(32, 4),
-                transforms.ToTensor(),
-                normalize,
-            ]), download=True),
-            batch_size=args.batch_size, shuffle=True,
-            num_workers=args.workers, pin_memory=True)
-
-        val_loader = torch.utils.data.DataLoader(
-            datasets.CIFAR100(root='./datasets/', train=False, transform=transforms.Compose([
-                transforms.ToTensor(),
-                normalize,
-            ])),
-            batch_size=128, shuffle=False,
-            num_workers=args.workers, pin_memory=True)
-
-    elif args.datasets == 'ImageNet':
-        traindir = os.path.join('/home/datasets/ILSVRC2012/', 'train')
-        valdir = os.path.join('/home/datasets/ILSVRC2012/', 'val')
-        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                        std=[0.229, 0.224, 0.225])
-
-        train_dataset = datasets.ImageFolder(
-            traindir,
-            transforms.Compose([
-                transforms.RandomResizedCrop(224),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                normalize,
-            ]))
-
-        train_loader = torch.utils.data.DataLoader(
-            train_dataset, batch_size=args.batch_size, shuffle=True,
-            num_workers=args.workers, pin_memory=True)
-
-        val_loader = torch.utils.data.DataLoader(
-            datasets.ImageFolder(valdir, transforms.Compose([
-                transforms.Resize(256),
-                transforms.CenterCrop(224),
-                transforms.ToTensor(),
-                normalize,
-            ])),
-            batch_size=args.batch_size, shuffle=False,
-            num_workers=args.workers)
-    
-    return train_loader, val_loader
-    
-
-def get_imagenet_dataset():
-    traindir = os.path.join('/home/datasets/ILSVRC2012/', 'train')
-    valdir = os.path.join('/home/datasets/ILSVRC2012/', 'val')
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                    std=[0.229, 0.224, 0.225])
-
-    train_dataset = datasets.ImageFolder(
-        traindir,
-        transforms.Compose([
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            normalize,
-        ]))
-
-    val_dataset = datasets.ImageFolder(
-        valdir, 
-        transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            normalize,
-        ]))
-    return train_dataset, val_dataset 
-
-################################ training & evaluation #######################################
-
-def eval_model(loader, model, criterion):
-    loss_sum = 0.0
-    correct = 0.0
+def test_model_on_dataset(model, dataset):
 
     model.eval()
+    device = 'cuda'
+    with torch.no_grad():
+        top1, correct, n = 0., 0., 0.
+        end = time.time()
+        loader = dataset.test_loader
+        if type(dataset).__name__ == 'ImageNet2p':
+            loader = dataset.train_loader
+            # assert to make sure the imagenet held-out minival logic is consistent across machines.
+            # tested on a few machines but if this fails for you please submit an issue and we will resolve.
+            assert dataset.train_dataset.__getitem__(dataset.sampler.indices[1000])['image_paths'].endswith('n01675722_4108.JPEG')
 
-    for i, (input, target) in enumerate(loader):
-        input = input.cuda()
-        target = target.cuda()
+        for i, batch in enumerate(loader):
+            batch = maybe_dictionarize_batch(batch)
+            inputs, labels = batch['images'].cuda(), batch['labels'].cuda()
+            data_time = time.time() - end
+            y = labels
+            if 'image_paths' in batch:
+                image_paths = batch['image_paths']
 
-        output = model(input)
-        loss = criterion(output, target)
+            logits = model(inputs)
 
-        loss_sum += loss.item() * input.size(0)
-        pred = output.data.max(1, keepdim=True)[1]
-        correct += pred.eq(target.data.view_as(pred)).sum().item()
+            projection_fn = getattr(dataset, 'project_logits', None)
+            if projection_fn is not None:
+                logits = projection_fn(logits, device)
 
-    return {
-        'loss': loss_sum / len(loader.dataset),
-        'accuracy': correct / len(loader.dataset) * 100.0,
-    }
+            if hasattr(dataset, 'project_labels'):
+                y = dataset.project_labels(y, device)
+            if isinstance(logits, list):
+                logits = logits[0]
 
-def bn_update(loader, model):
-    model.train()
-    for i, (input, target) in enumerate(loader):
-        target = target.cuda()
-        input_var = input.cuda()
-        target_var = target
 
-        # compute output
-        output = model(input_var)
+            pred = logits.argmax(dim=1, keepdim=True).to(device)
+            if hasattr(dataset, 'accuracy'):
+                acc1, num_total = dataset.accuracy(logits, y, image_paths, None)
+                correct += acc1
+                n += num_total
+            else:
+                correct += pred.eq(y.view_as(pred)).sum().item()
+                n += y.size(0)
 
-def get_model(args):
-    print('Model: {}'.format(args.arch))
+            batch_time = time.time() - end
+            end = time.time()
+            if i % 200 == 0:
+                percent_complete = 100.0 * i / len(loader)
+                print(
+                    f"[{percent_complete:.0f}% {i}/{len(loader)}]\t"
+                    f"Acc: {100 * (correct/n):.2f}\tData (t) {data_time:.3f}\tBatch (t) {batch_time:.3f}"
+                )
 
-    if args.datasets == 'ImageNet':
-        return models_imagenet.__dict__[args.arch]()
+        top1 = correct / n
+        return top1
 
-    if args.datasets == 'CIFAR10':
-        num_classes = 10
-    elif args.datasets == 'CIFAR100':
-        num_classes = 100
-    
-    model_cfg = getattr(models, args.arch)
 
-    return model_cfg.base(*model_cfg.args, num_classes=num_classes, **model_cfg.kwargs)
-        
+def assign_learning_rate(param_group, new_lr):
+    param_group["lr"] = new_lr
 
+def _warmup_lr(base_lr, warmup_length, step):
+    return base_lr * (step + 1) / warmup_length
+
+def cosine_lr(optimizer, base_lrs, warmup_length, steps):
+    if not isinstance(base_lrs, list):
+        base_lrs = [base_lrs for _ in optimizer.param_groups]
+    assert len(base_lrs) == len(optimizer.param_groups)
+    def _lr_adjuster(step):
+        for param_group, base_lr in zip(optimizer.param_groups, base_lrs):
+            if step < warmup_length:
+                lr = _warmup_lr(base_lr, warmup_length, step)
+            else:
+                e = step - warmup_length
+                es = steps - warmup_length
+                lr = 0.5 * (1 + np.cos(np.pi * e / es)) * base_lr
+            assign_learning_rate(param_group, lr)
+    return _lr_adjuster

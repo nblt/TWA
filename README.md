@@ -1,64 +1,34 @@
 # TWA
-The code is the official implementation of our ICLR paper 
-[Trainable Weight Averaging: Efficient Training by Optimizing Historical Solutions](https://openreview.net/pdf?id=8wbnpOJY-f). 
+The code is the official implementation of our paper 
+[Trainable Weight Averaging: Accelerating Training and Improving Generalization].
 
-We propose to conduct neural network training in a tiny subspace spanned by historical solutions. Such optimization is equivalent to performing weight averaging on these solutions with trainable coefficients (TWA), in contrast with the equal averaging coefficients as in [SWA](https://github.com/timgaripov/swa). We show that a good solution can emerge early in DNN's training by properly averaging historical solutions with TWA. In this way, we are able to achieve great training efficiency (e.g. saving over **30%** training epochs on CIFAR / ImageNet) by optimizing these historical solutions. We also provide an efficient and scalable framework for multi-node training. Besides, TWA is also able to improve finetune results from multiple training configurations, which we are currently focusing on. This [colab](https://colab.research.google.com/drive/1fxUJ0K8dd7V3gsozmKsHhfdYHhYVB-WZ?usp=sharing) provides an exploratory example we adapt from [Model Soups](https://github.com/mlfoundations/model-soups).
-
-
-<div align="center">
-<img src="twa.png" width="50%" alt=""/>
-
-<div align="left">
+Weight averaging is a widely used technique for accelerating training and improving the generalization of deep neural networks (DNNs). While existing approaches like stochastic weight averaging (SWA) rely on pre-set weighting schemes, they can be suboptimal when handling diverse weights. We introduce Trainable Weight Averaging (TWA), a novel optimization method that operates within a reduced subspace spanned by candidate weights and learns optimal weighting coefficients through optimization. TWA offers greater flexibility and can be applied to different training scenarios. For large-scale applications, we develop a distributed training framework that combines parallel computation with low-bit compression for the projection matrix, effectively managing memory and computational demands. TWA can be implemented using either training data (TWA-t) or validation data (TWA-v), with the latter providing more effective averaging. Extensive experiments showcase TWA's advantages: (i) it consistently outperforms SWA in generalization performance and flexibility, (ii) when applied during early training, it reduces training time by over 40\% on CIFAR datasets and 30\% on ImageNet while maintaining comparable performance, and (iii) during fine-tuning, it significantly enhances generalization by weighted averaging of model checkpoints. In summary, we present an efficient and effective framework for trainable weight averaging. 
 
 
 ## Dependencies
 
 Install required dependencies:
 
-```
+```[bash]
 pip install -r requirements.txt
 ```
 
 ## How to run
 
-### TWA in tail stage training
-We first show that TWA could improve the performance of SWA in the original SWA setting, where the improvements are more significant when the tail learning rate `swa_lr` is larger.
+### Training from scratch
+```[bash]
+bash run_cifar.sh
 ```
-cd swa
-```
-First, run SWA using original [code](https://github.com/timgaripov/swa):
-```
-bash run.sh
-```
-Then, we could perform TWA using:
-```
-bash run_twa.sh
-```
-The training configuration is easy to set as you need in the scripts.
 
-### TWA in head stage training
-In this part, we conduct TWA in the head training stage, where we achieve considerably **30%-40%** epochs saving on CIFAR-10/100 and ImageNet, with a comparable or even better performance against regular training.
-We show sample usages in `run.sh`.
 
-For the first step, we conduct regular training for generating the historical solutions (for ImageNet training, the dataset need to be prepared at folder `path`). For example,
+### Fine-tuning
 
+```[bash]
+bash twa_v.sh
 ```
-datasets=CIFAR100
-model=VGG16BN
-DST=results/$model\_$datasets
 
-CUDA_VISIBLE_DEVICES=0 python -u train_sgd_cifar.py --datasets $datasets \
-        --arch=$model --epochs=200 --lr 0.1 \
-        --save-dir=$DST/checkpoints --log-dir=$DST -p 100
-```
-Then, we conduct TWA training for quickly composing a good solution utilizing historical solutions (note that here we only utilize the first 100 epoch checkpoints):
-```
-CUDA_VISIBLE_DEVICES=0 python -u train_twa.py --epochs 10 --datasets $datasets \
-        --opt SGD --extract Schmidt --schedule step \
-        --lr 2 --params_start 0 --params_end 101 --train_start -1 --wd 0.00001 \
-        --batch-size 128  --arch=$model  \
-        --save-dir=$DST/checkpoints  --log-dir=$DST
-```
+
+
 
 ## Citation
 If you find this work helpful, please cite:
