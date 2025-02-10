@@ -2,12 +2,12 @@
 
 # basic training 
 seed=1
-datasets=CIFAR100
+datasets=ImageNet
 port=1234
-model=ViT
+model=vit-b-16
 opt=adamw
-val_ratio=10
-epochs=200
+val_ratio=2
+epochs=90
 DST=results_sgd/no_shuffle_$opt\_epoch$epochs\_$model\_$datasets\_split$val_ratio\_seed$seed
 CUDA_VISIBLE_DEVICES=$device python train_sgd_cifar.py --datasets $datasets \
         --arch=$model --epochs=$epochs --lr 0.001 --optimizer $opt  --wd 0.1 --schedule cosine \
@@ -17,13 +17,13 @@ CUDA_VISIBLE_DEVICES=$device python train_sgd_cifar.py --datasets $datasets \
 # TWA training
 # CIFAR
 
-lr=0.001
+lr=0.01
 wd=0
-val_ratio=10
+val_ratio=2
 opt=adamw
-epochs=200
+epochs=90
 DST=/opt/data/private/litao/TWA_arch/TWA/results_sgd/$model\_$datasets\_split$val_ratio\_seed$seed/checkpoints
-bits=1
+bits=4
 
 CUDA_VISIBLE_DEVICES=$devices python -m torch.distributed.launch --nproc_per_node 1 --master_port $port train_twa_layer_batch_quant.py \
     --lr $lr --batch-size $batch --wd $wd --epochs 10 \
