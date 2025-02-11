@@ -13,7 +13,7 @@ bz=32
 bits=4
 layer=0
 
-CUDA_VISIBLE_DEVICES=$devices python -m torch.distributed.launch --nproc_per_node 1 --master_port $port train_twa_layer_batch_quant.py \
+CUDA_VISIBLE_DEVICES=$devices python -m torch.distributed.launch --nproc_per_node 1 --master_port $port train_twa.py \
     --lr $lr --batch-size $bz --wd $wd --epochs 5 \
     --cosine-lr --optimizer adamw --layer-size $layer \
     --model-location $DST \
